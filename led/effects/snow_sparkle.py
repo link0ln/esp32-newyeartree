@@ -1,50 +1,76 @@
-# Snow sparkle effect - white sparkles on colored background
+# Snow sparkle - direct buffer access
 import time
 import random
+import micropython
 
 NAME = "Snow Sparkle"
 DESCRIPTION = "Sparkling snow effect"
-DELAY = 0.02
+
+PARAMS = {
+    'bg_blue': {'name': 'Background Blue', 'type': 'int', 'min': 0, 'max': 100, 'default': 64},
+    'sparkle_min': {'name': 'Min Sparkles', 'type': 'int', 'min': 1, 'max': 5, 'default': 1},
+    'sparkle_max': {'name': 'Max Sparkles', 'type': 'int', 'min': 2, 'max': 10, 'default': 5},
+    'delay_min': {'name': 'Min Delay (ms)', 'type': 'int', 'min': 10, 'max': 80, 'default': 20},
+    'delay_max': {'name': 'Max Delay (ms)', 'type': 'int', 'min': 50, 'max': 150, 'default': 100},
+}
+settings = {}
 
 
-def apply_brightness(color, brightness):
-    factor = brightness / 100.0
-    r, g, b = color
-    return (int(g * factor), int(r * factor), int(b * factor))
+def get_param(name):
+    if name in settings:
+        return settings[name]
+    return PARAMS[name]['default']
+
+
+@micropython.native
+def fill_bg(buf, num, bg_r, bg_g, bg_b):
+    idx = 0
+    for i in range(num):
+        buf[idx] = bg_r
+        buf[idx + 1] = bg_g
+        buf[idx + 2] = bg_b
+        idx += 3
 
 
 def run(strip, num_leds, brightness, session_id, check_stop):
-    # Background color (dim blue for winter feel)
-    bg_color = (16, 16, 64)
+    bg_blue = get_param('bg_blue')
+    sparkle_min = get_param('sparkle_min')
+    sparkle_max = get_param('sparkle_max')
+    delay_min = get_param('delay_min')
+    delay_max = get_param('delay_max')
 
-    # Sparkle color (bright white)
-    sparkle_color = (255, 255, 255)
+    factor = brightness / 100.0
+    bg_g = int(16 * factor)
+    bg_r = int(16 * factor)
+    bg_b = int(bg_blue * factor)
+    sparkle_v = int(255 * factor)
+    buf = strip.buf
 
-    for _ in range(400):
+    while True:
         if check_stop(session_id):
             return False
 
-        # Set background
-        for i in range(num_leds):
-            strip[i] = apply_brightness(bg_color, brightness)
+        fill_bg(buf, num_leds, bg_r, bg_g, bg_b)
 
-        # Add random sparkles
-        num_sparkles = random.randint(1, max(1, num_leds // 10))
         sparkle_positions = []
-
-        for _ in range(num_sparkles):
+        for _ in range(random.randint(sparkle_min, sparkle_max)):
             pos = random.randint(0, num_leds - 1)
             sparkle_positions.append(pos)
-            strip[pos] = apply_brightness(sparkle_color, brightness)
+            idx = pos * 3
+            buf[idx] = sparkle_v
+            buf[idx + 1] = sparkle_v
+            buf[idx + 2] = sparkle_v
 
         strip.write()
-        time.sleep(random.randint(20, 100) / 1000.0)
+        time.sleep(random.randint(delay_min, delay_max) / 1000.0)
 
-        # Turn off sparkles
         for pos in sparkle_positions:
-            strip[pos] = apply_brightness(bg_color, brightness)
+            idx = pos * 3
+            buf[idx] = bg_r
+            buf[idx + 1] = bg_g
+            buf[idx + 2] = bg_b
 
         strip.write()
-        time.sleep(DELAY)
+        time.sleep(0.02)
 
     return True

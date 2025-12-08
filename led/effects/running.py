@@ -1,44 +1,64 @@
-# Running lights effect - sine wave brightness
+# Running lights - direct buffer access
 import time
-import math
+import micropython
 
 NAME = "Running"
 DESCRIPTION = "Running lights wave"
-DELAY = 0.03
+
+PARAMS = {
+    'speed': {'name': 'Speed', 'type': 'int', 'min': 15, 'max': 60, 'default': 30},
+    'wave_size': {'name': 'Wave Size', 'type': 'float', 'min': 0.1, 'max': 0.6, 'default': 0.3},
+}
+settings = {}
+
+_sine = None
 
 
-def apply_brightness(color, brightness):
-    factor = brightness / 100.0
-    r, g, b = color
-    return (int(g * factor), int(r * factor), int(b * factor))
+def get_param(name):
+    if name in settings:
+        return settings[name]
+    return PARAMS[name]['default']
+
+
+def get_sine():
+    global _sine
+    if _sine is None:
+        import math
+        _sine = bytearray(256)
+        for i in range(256):
+            _sine[i] = int((math.sin(i * 3.14159 * 2 / 256) + 1) * 127)
+    return _sine
+
+
+@micropython.native
+def render_running(buf, sine, num, pos, wave_mult, factor, br, bg, bb):
+    idx = 0
+    for i in range(num):
+        sine_idx = ((i + pos) * wave_mult) >> 8
+        level = sine[sine_idx & 255]
+        buf[idx] = (level * br * factor) >> 16
+        buf[idx + 1] = (level * bg * factor) >> 16
+        buf[idx + 2] = (level * bb * factor) >> 16
+        idx += 3
 
 
 def run(strip, num_leds, brightness, session_id, check_stop):
-    # Running color (warm white/gold for christmas)
-    base_r = 255
-    base_g = 200
-    base_b = 50
+    speed = get_param('speed')
+    wave_size = get_param('wave_size')
 
+    sine = get_sine()
+    factor = int(brightness * 256 // 100)
+    wave_mult = int(wave_size * 256)
+    br, bg, bb = 255, 200, 50
+    buf = strip.buf
     position = 0
 
-    for _ in range(300):
+    while True:
         if check_stop(session_id):
             return False
-
         position += 1
-
-        for i in range(num_leds):
-            # Sine wave creates smooth running pattern
-            level = ((math.sin((i + position) * 0.3) + 1) * 127)
-            level = int(level)
-
-            r = int((level / 255) * base_r)
-            g = int((level / 255) * base_g)
-            b = int((level / 255) * base_b)
-
-            strip[i] = apply_brightness((r, g, b), brightness)
-
+        render_running(buf, sine, num_leds, position, wave_mult, factor, br, bg, bb)
         strip.write()
-        time.sleep(DELAY)
+        time.sleep(speed / 1000.0)
 
     return True

@@ -1,69 +1,76 @@
-# Color bounce effect - bouncing LED with fade trail
+# Color bounce effect - direct buffer access
 import time
+import micropython
 
 NAME = "Color Bounce"
 DESCRIPTION = "Bouncing LED with trail"
-DELAY = 0.03
+
+PARAMS = {
+    'speed': {'name': 'Speed', 'type': 'int', 'min': 15, 'max': 60, 'default': 30},
+    'fade_speed': {'name': 'Fade Speed', 'type': 'int', 'min': 15, 'max': 60, 'default': 30},
+}
+settings = {}
 
 
-def apply_brightness(color, brightness):
-    factor = brightness / 100.0
-    r, g, b = color
-    return (int(g * factor), int(r * factor), int(b * factor))
+def get_param(name):
+    if name in settings:
+        return settings[name]
+    return PARAMS[name]['default']
+
+
+@micropython.native
+def fade_and_render(buf, r, g, b, num, fade, factor):
+    idx = 0
+    for i in range(num):
+        vr = r[i]
+        vg = g[i]
+        vb = b[i]
+        r[i] = vr - fade if vr > fade else 0
+        g[i] = vg - fade if vg > fade else 0
+        b[i] = vb - fade if vb > fade else 0
+        buf[idx] = (r[i] * factor) >> 8
+        buf[idx + 1] = (g[i] * factor) >> 8
+        buf[idx + 2] = (b[i] * factor) >> 8
+        idx += 3
 
 
 def run(strip, num_leds, brightness, session_id, check_stop):
-    # Colors to cycle through
-    colors = [
-        (255, 0, 0),    # Red
-        (0, 255, 0),    # Green
-        (0, 0, 255),    # Blue
-        (255, 255, 0),  # Yellow
-        (255, 0, 255),  # Magenta
-        (0, 255, 255),  # Cyan
-    ]
+    speed = get_param('speed')
+    fade_speed = get_param('fade_speed')
 
+    colors = [(255, 0, 0), (0, 255, 0), (0, 0, 255), (255, 255, 0), (255, 0, 255), (0, 255, 255)]
     color_idx = 0
     position = 0
-    direction = 1
+    direction = 1 if num_leds < 200 else num_leds // 100
 
-    # Trail buffer
-    leds = [(0, 0, 0)] * num_leds
+    leds_r = bytearray(num_leds)
+    leds_g = bytearray(num_leds)
+    leds_b = bytearray(num_leds)
+    factor = int(brightness * 256 // 100)
+    buf = strip.buf
 
-    for _ in range(300):
+    while True:
         if check_stop(session_id):
             return False
 
-        # Fade all LEDs
-        new_leds = []
-        for r, g, b in leds:
-            new_leds.append((
-                max(0, r - 30),
-                max(0, g - 30),
-                max(0, b - 30)
-            ))
-        leds = new_leds
-
-        # Set current position to full color
         color = colors[color_idx]
-        leds[position] = color
+        leds_r[position] = color[0]
+        leds_g[position] = color[1]
+        leds_b[position] = color[2]
 
-        # Write to strip
-        for i in range(num_leds):
-            strip[i] = apply_brightness(leds[i], brightness)
+        fade_and_render(buf, leds_r, leds_g, leds_b, num_leds, fade_speed, factor)
         strip.write()
 
-        # Move position
         position += direction
         if position >= num_leds - 1:
             position = num_leds - 1
-            direction = -1
+            direction = -abs(direction)
             color_idx = (color_idx + 1) % len(colors)
         elif position <= 0:
             position = 0
-            direction = 1
+            direction = abs(direction)
             color_idx = (color_idx + 1) % len(colors)
 
-        time.sleep(DELAY)
+        time.sleep(speed / 1000.0)
 
     return True

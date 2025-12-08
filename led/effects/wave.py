@@ -1,53 +1,63 @@
-# Color Wave effect - flowing wave of color
+# Wave effect - direct buffer access
 import time
-import math
+import micropython
 
 NAME = "Color Wave"
 DESCRIPTION = "Flowing wave of colors"
-DELAY = 0.03
+
+PARAMS = {
+    'speed': {'name': 'Speed', 'type': 'int', 'min': 10, 'max': 60, 'default': 30},
+    'wave_length': {'name': 'Wave Length', 'type': 'int', 'min': 128, 'max': 512, 'default': 256},
+}
+settings = {}
+
+_sine = None
 
 
-def apply_brightness(color, brightness):
-    factor = brightness / 100.0
-    r, g, b = color
-    return (int(g * factor), int(r * factor), int(b * factor))
+def get_param(name):
+    if name in settings:
+        return settings[name]
+    return PARAMS[name]['default']
+
+
+def get_sine():
+    global _sine
+    if _sine is None:
+        import math
+        _sine = bytearray(256)
+        for i in range(256):
+            _sine[i] = int((math.sin(i * 3.14159 * 2 / 256) + 1) * 127.5)
+    return _sine
+
+
+@micropython.native
+def render_wave(buf, sine, num, offset, cr, cg, cb, factor):
+    idx = 0
+    for i in range(num):
+        wave_pos = ((i * 256 // num) + offset) & 255
+        wave_val = sine[wave_pos]
+        buf[idx] = (cr * wave_val * factor) >> 16
+        buf[idx + 1] = (cg * wave_val * factor) >> 16
+        buf[idx + 2] = (cb * wave_val * factor) >> 16
+        idx += 3
 
 
 def run(strip, num_leds, brightness, session_id, check_stop):
-    # Precompute sine table (0-255 values)
-    sine_table = []
-    for i in range(256):
-        val = int((math.sin(i * 3.14159 * 2 / 256) + 1) * 127.5)
-        sine_table.append(val)
+    speed = get_param('speed')
+    wave_length = get_param('wave_length')
 
-    colors = [
-        (255, 0, 0),    # Red
-        (0, 255, 0),    # Green
-        (0, 0, 255),    # Blue
-        (255, 128, 0),  # Orange
-    ]
+    sine = get_sine()
+    factor = int(brightness * 256 // 100)
+    colors = [(255, 0, 0), (0, 255, 0), (0, 0, 255), (255, 128, 0)]
+    buf = strip.buf
 
-    for base_color in colors:
-        if check_stop(session_id):
-            return False
-
-        for offset in range(256):
+    while True:
+        for cr, cg, cb in colors:
             if check_stop(session_id):
                 return False
-
-            for i in range(num_leds):
-                # Calculate wave position
-                wave_pos = (i * 256 // num_leds + offset) & 255
-                wave_val = sine_table[wave_pos]
-
-                # Apply wave to color
-                r = base_color[0] * wave_val // 255
-                g = base_color[1] * wave_val // 255
-                b = base_color[2] * wave_val // 255
-
-                strip[i] = apply_brightness((r, g, b), brightness)
-
-            strip.write()
-            time.sleep(DELAY)
-
-    return True
+            for offset in range(wave_length):
+                if check_stop(session_id):
+                    return False
+                render_wave(buf, sine, num_leds, offset, cr, cg, cb, factor)
+                strip.write()
+                time.sleep(speed / 1000.0)

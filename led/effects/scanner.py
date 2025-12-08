@@ -1,78 +1,79 @@
-# Larson Scanner effect - Knight Rider / Cylon eye
+# Scanner effect - direct buffer access
 import time
+import micropython
 
 NAME = "Scanner"
 DESCRIPTION = "Knight Rider scanner"
-DELAY = 0.03
-EYE_SIZE = 4
-FADE_AMOUNT = 96
+
+PARAMS = {
+    'eye_size': {'name': 'Eye Size', 'type': 'int', 'min': 2, 'max': 10, 'default': 4},
+    'fade_amount': {'name': 'Fade Amount', 'type': 'int', 'min': 50, 'max': 200, 'default': 96},
+    'speed': {'name': 'Speed', 'type': 'int', 'min': 10, 'max': 60, 'default': 30},
+}
+settings = {}
 
 
-def apply_brightness(color, brightness):
-    factor = brightness / 100.0
-    r, g, b = color
-    return (int(g * factor), int(r * factor), int(b * factor))
+def get_param(name):
+    if name in settings:
+        return settings[name]
+    return PARAMS[name]['default']
 
 
-def fade_all(strip, num_leds, amount):
-    """Fade all pixels"""
-    for i in range(num_leds):
-        g, r, b = strip[i]
-        r = (r * amount) // 256
-        g = (g * amount) // 256
-        b = (b * amount) // 256
-        strip[i] = (g, r, b)
+@micropython.native
+def fade_buffer(buf, num, amount):
+    idx = 0
+    for i in range(num):
+        buf[idx] = (buf[idx] * amount) >> 8
+        buf[idx + 1] = (buf[idx + 1] * amount) >> 8
+        buf[idx + 2] = (buf[idx + 2] * amount) >> 8
+        idx += 3
 
 
 def run(strip, num_leds, brightness, session_id, check_stop):
-    color = (255, 0, 0)  # Red like Knight Rider
+    eye_size = get_param('eye_size')
+    fade_amount = get_param('fade_amount')
+    speed = get_param('speed')
 
-    for _ in range(6):  # 6 back-and-forth cycles
+    step = 1 if num_leds < 200 else num_leds // 100
+    if num_leds > 100:
+        eye_size = max(eye_size, num_leds // 50)
+
+    full_r = int(255 * brightness // 100)
+    half_r = int(127 * brightness // 100)
+    buf = strip.buf
+
+    while True:
         if check_stop(session_id):
             return False
 
-        # Forward
-        for pos in range(num_leds - EYE_SIZE):
+        for pos in range(0, num_leds - eye_size, step):
             if check_stop(session_id):
                 return False
-
-            fade_all(strip, num_leds, FADE_AMOUNT)
-
-            # Draw the eye
-            for j in range(EYE_SIZE):
-                idx = pos + j
-                if idx < num_leds:
-                    # Brightest in center
-                    if j == EYE_SIZE // 2:
-                        strip[idx] = apply_brightness(color, brightness)
-                    else:
-                        r = color[0] // 2
-                        g = color[1] // 2
-                        b = color[2] // 2
-                        strip[idx] = apply_brightness((r, g, b), brightness)
-
+            fade_buffer(buf, num_leds, fade_amount)
+            mid = eye_size // 2
+            for j in range(eye_size):
+                idx = (pos + j) * 3
+                if pos + j < num_leds:
+                    rv = full_r if j == mid else half_r
+                    buf[idx] = rv
+                    buf[idx + 1] = 0
+                    buf[idx + 2] = 0
             strip.write()
-            time.sleep(DELAY)
+            time.sleep(speed / 1000.0)
 
-        # Backward
-        for pos in range(num_leds - EYE_SIZE - 1, -1, -1):
+        for pos in range(num_leds - eye_size - 1, -1, -step):
             if check_stop(session_id):
                 return False
-
-            fade_all(strip, num_leds, FADE_AMOUNT)
-
-            for j in range(EYE_SIZE):
-                idx = pos + j
-                if idx < num_leds:
-                    if j == EYE_SIZE // 2:
-                        strip[idx] = apply_brightness(color, brightness)
-                    else:
-                        r = color[0] // 2
-                        g = color[1] // 2
-                        b = color[2] // 2
-                        strip[idx] = apply_brightness((r, g, b), brightness)
-
+            fade_buffer(buf, num_leds, fade_amount)
+            mid = eye_size // 2
+            for j in range(eye_size):
+                idx = (pos + j) * 3
+                if pos + j < num_leds:
+                    rv = full_r if j == mid else half_r
+                    buf[idx] = rv
+                    buf[idx + 1] = 0
+                    buf[idx + 2] = 0
             strip.write()
-            time.sleep(DELAY)
+            time.sleep(speed / 1000.0)
 
     return True

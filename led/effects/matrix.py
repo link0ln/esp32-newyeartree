@@ -1,67 +1,78 @@
-# Matrix effect - falling dots like The Matrix movie
+# Matrix effect - direct buffer access
 import time
 import random
+import micropython
 
 NAME = "Matrix"
 DESCRIPTION = "Matrix movie falling dots"
-DELAY = 0.05
+
+PARAMS = {
+    'spawn_rate': {'name': 'Spawn Rate', 'type': 'int', 'min': 5, 'max': 40, 'default': 20},
+    'fade_speed': {'name': 'Fade Speed', 'type': 'int', 'min': 10, 'max': 50, 'default': 20},
+    'speed_min': {'name': 'Min Speed', 'type': 'int', 'min': 1, 'max': 3, 'default': 1},
+    'speed_max': {'name': 'Max Speed', 'type': 'int', 'min': 2, 'max': 5, 'default': 3},
+}
+settings = {}
 
 
-def apply_brightness(color, brightness):
-    factor = brightness / 100.0
-    r, g, b = color
-    return (int(g * factor), int(r * factor), int(b * factor))
+def get_param(name):
+    if name in settings:
+        return settings[name]
+    return PARAMS[name]['default']
+
+
+@micropython.native
+def fade_and_render(buf, leds, num, fade, factor):
+    idx = 0
+    for i in range(num):
+        v = leds[i]
+        if v > fade:
+            v -= fade
+        else:
+            v = 0
+        leds[i] = v
+        gv = (v * factor) >> 8
+        buf[idx] = 0       # R
+        buf[idx + 1] = gv  # G - green only for matrix
+        buf[idx + 2] = 0   # B
+        idx += 3
 
 
 def run(strip, num_leds, brightness, session_id, check_stop):
-    # Matrix green color
-    matrix_color = (0, 255, 0)
+    spawn_rate = get_param('spawn_rate')
+    fade_speed = get_param('fade_speed')
+    speed_min = get_param('speed_min')
+    speed_max = get_param('speed_max')
 
-    # Fade buffer for trails
-    leds = [(0, 0, 0)] * num_leds
+    if num_leds > 100:
+        speed_max = speed_max * num_leds // 50
+        speed_min = speed_min * num_leds // 50
 
-    # Active drops (position, speed, brightness)
+    leds_g = bytearray(num_leds)
     drops = []
+    max_drops = num_leds // 20
+    factor = int(brightness * 256 // 100)
+    buf = strip.buf
 
-    for _ in range(300):
+    while True:
         if check_stop(session_id):
             return False
 
-        # Randomly spawn new drops
-        if random.randint(0, 100) < 20 and len(drops) < num_leds // 3:
-            drops.append({
-                'pos': 0,
-                'speed': random.randint(1, 3),
-                'bright': random.randint(180, 255)
-            })
+        if random.randint(0, 100) < spawn_rate and len(drops) < max_drops:
+            drops.append([0, random.randint(speed_min, speed_max), random.randint(180, 255)])
 
-        # Fade all LEDs
-        new_leds = []
-        for r, g, b in leds:
-            new_leds.append((
-                max(0, r - 20),
-                max(0, g - 20),
-                max(0, b - 20)
-            ))
-        leds = new_leds
+        new_drops = []
+        for d in drops:
+            pos = int(d[0])
+            if 0 <= pos < num_leds:
+                leds_g[pos] = d[2]
+            d[0] += d[1]
+            if d[0] < num_leds + 5:
+                new_drops.append(d)
+        drops = new_drops
 
-        # Update drops
-        active_drops = []
-        for drop in drops:
-            pos = int(drop['pos'])
-            if pos < num_leds:
-                # Set the drop pixel (bright green)
-                leds[pos] = (0, drop['bright'], 0)
-                drop['pos'] += drop['speed']
-                if drop['pos'] < num_leds + 5:
-                    active_drops.append(drop)
-        drops = active_drops
-
-        # Write to strip
-        for i in range(num_leds):
-            strip[i] = apply_brightness(leds[i], brightness)
+        fade_and_render(buf, leds_g, num_leds, fade_speed, factor)
         strip.write()
-
-        time.sleep(DELAY)
+        time.sleep(0.03)
 
     return True
