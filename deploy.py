@@ -30,6 +30,7 @@ UPLOAD_FILES = [
 
 UPLOAD_FOLDERS = [
     "led",
+    "calibrate",
 ]
 
 # Files/folders to skip
@@ -103,9 +104,22 @@ def get_project_files(base_dir):
     return files
 
 
-def cmd_upload(base_dir):
-    """Upload all files"""
-    files = get_project_files(base_dir)
+def cmd_upload(base_dir, specific_files=None):
+    """Upload files. If specific_files provided, upload only those."""
+    if specific_files:
+        # Upload specific files
+        files = []
+        for f in specific_files:
+            local_path = os.path.join(base_dir, f)
+            if os.path.exists(local_path):
+                remote_path = f.replace("\\", "/")
+                files.append((local_path, remote_path))
+            else:
+                print(f"File not found: {f}")
+    else:
+        # Upload all project files
+        files = get_project_files(base_dir)
+
     print(f"Found {len(files)} files to upload\n")
 
     # Login first
@@ -189,19 +203,29 @@ def main():
         print(__doc__)
         sys.exit(1)
 
-    commands = sys.argv[1:]
+    args = sys.argv[1:]
     base_dir = os.path.dirname(os.path.abspath(__file__))
 
     print(f"ESP32 Deploy - Target: {ESP32_URL}\n")
 
-    for cmd in commands:
+    i = 0
+    while i < len(args):
+        cmd = args[i]
         if cmd == "upload":
-            if not cmd_upload(base_dir):
+            # Collect file arguments until next command or end
+            files = []
+            i += 1
+            while i < len(args) and args[i] not in ("reset", "status", "upload"):
+                files.append(args[i])
+                i += 1
+            if not cmd_upload(base_dir, files if files else None):
                 sys.exit(1)
         elif cmd == "reset":
             cmd_reset()
+            i += 1
         elif cmd == "status":
             cmd_status()
+            i += 1
         else:
             print(f"Unknown command: {cmd}")
             sys.exit(1)

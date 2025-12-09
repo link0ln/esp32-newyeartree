@@ -2,6 +2,7 @@
 import time
 import random
 import micropython
+import gc
 
 NAME = "Falling Snow"
 DESCRIPTION = "Gentle falling snowflakes with trails"
@@ -84,37 +85,46 @@ def run(strip, num_leds, brightness, session_id, check_stop):
 
     flakes = []
     sleep_time = 0.005 if num_leds > 300 else 0.015
+    frame_count = 0
 
     while True:
         if check_stop(session_id):
             return False
 
+        # GC every 200 frames to prevent memory fragmentation
+        frame_count += 1
+        if frame_count >= 200:
+            frame_count = 0
+            gc.collect()
+
         # Spawn
         if random.randint(0, 100) < spawn_rate and len(flakes) < num_flakes:
             flakes.append([0.0, random.uniform(speed_min, speed_max), random.randint(180, 255)])
 
-        # Update flakes - draw to LED buffers
-        new_flakes = []
-        for f in flakes:
+        # Update flakes - draw to LED buffers (filter in place)
+        i = 0
+        while i < len(flakes):
+            f = flakes[i]
             f[0] += f[1]
             p = int(f[0])
-            if p < num_leds:
-                if 0 <= p:
-                    leds_r[p] = f[2]
-                    leds_g[p] = f[2]
-                    leds_b[p] = f[2]
-                for t in range(1, trail_len):
-                    tp = p - t
-                    if 0 <= tp < num_leds:
-                        lv = f[2] >> t
-                        if leds_r[tp] < lv:
-                            leds_r[tp] = lv
-                        if leds_g[tp] < lv:
-                            leds_g[tp] = lv
-                        if leds_b[tp] < lv:
-                            leds_b[tp] = lv
-                new_flakes.append(f)
-        flakes = new_flakes
+            if p >= num_leds:
+                flakes.pop(i)  # Remove finished flake
+                continue
+            if 0 <= p:
+                leds_r[p] = f[2]
+                leds_g[p] = f[2]
+                leds_b[p] = f[2]
+            for t in range(1, trail_len):
+                tp = p - t
+                if 0 <= tp < num_leds:
+                    lv = f[2] >> t
+                    if leds_r[tp] < lv:
+                        leds_r[tp] = lv
+                    if leds_g[tp] < lv:
+                        leds_g[tp] = lv
+                    if leds_b[tp] < lv:
+                        leds_b[tp] = lv
+            i += 1
 
         # Fade and render directly to buffer (native optimized)
         fade_and_render(buf, leds_r, leds_g, leds_b, num_leds, fade_speed, bg_b, factor)

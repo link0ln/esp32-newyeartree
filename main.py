@@ -648,8 +648,19 @@ def http_server():
                 if filename:
                     session_id = str(len(upload_sessions))
                     upload_sessions[session_id] = {'filename': "/" + filename}
+                    # Create parent directories if needed
+                    full_path = "/" + filename
+                    if "/" in filename:
+                        parts = filename.split("/")
+                        path_so_far = ""
+                        for part in parts[:-1]:
+                            path_so_far += "/" + part
+                            try:
+                                os.mkdir(path_so_far)
+                            except:
+                                pass
                     try:
-                        with open("/" + filename, 'wb') as f:
+                        with open(full_path, 'wb') as f:
                             pass
                     except:
                         pass
