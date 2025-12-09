@@ -7,7 +7,7 @@ NAME = "Snow Sparkle"
 DESCRIPTION = "Sparkling snow effect"
 
 PARAMS = {
-    'bg_blue': {'name': 'Background Blue', 'type': 'int', 'min': 0, 'max': 100, 'default': 64},
+    'color': {'name': 'Background', 'type': 'color', 'min': 0, 'max': 0, 'default': '#101040'},
     'sparkle_min': {'name': 'Min Sparkles', 'type': 'int', 'min': 1, 'max': 5, 'default': 1},
     'sparkle_max': {'name': 'Max Sparkles', 'type': 'int', 'min': 2, 'max': 10, 'default': 5},
     'delay_min': {'name': 'Min Delay (ms)', 'type': 'int', 'min': 10, 'max': 80, 'default': 20},
@@ -22,6 +22,19 @@ def get_param(name):
     return PARAMS[name]['default']
 
 
+def parse_color(hex_color):
+    """Parse hex color string like '#ff0000' to (r, g, b)"""
+    try:
+        if hex_color.startswith('#'):
+            hex_color = hex_color[1:]
+        r = int(hex_color[0:2], 16)
+        g = int(hex_color[2:4], 16)
+        b = int(hex_color[4:6], 16)
+        return (r, g, b)
+    except:
+        return (16, 16, 64)  # Default bluish
+
+
 @micropython.native
 def fill_bg(buf, num, bg_r, bg_g, bg_b):
     idx = 0
@@ -33,16 +46,17 @@ def fill_bg(buf, num, bg_r, bg_g, bg_b):
 
 
 def run(strip, num_leds, brightness, session_id, check_stop):
-    bg_blue = get_param('bg_blue')
+    color_hex = get_param('color')
     sparkle_min = get_param('sparkle_min')
     sparkle_max = get_param('sparkle_max')
     delay_min = get_param('delay_min')
     delay_max = get_param('delay_max')
 
+    cr, cg, cb = parse_color(color_hex)
     factor = brightness / 100.0
-    bg_g = int(16 * factor)
-    bg_r = int(16 * factor)
-    bg_b = int(bg_blue * factor)
+    bg_r = int(cr * factor)
+    bg_g = int(cg * factor)
+    bg_b = int(cb * factor)
     sparkle_v = int(255 * factor)
     buf = strip.buf
 
