@@ -379,6 +379,22 @@ def handle_request(path, method, params):
         clear()
         return ("OK", "text/plain", "200 OK")
 
+    # /led/udpenable - switch to UDP mode
+    if path == MODULE_ROUTE + "/udpenable":
+        import machine
+        stop_effect()
+        clear()
+        # Create flag file
+        try:
+            with open('/udp_mode', 'w') as f:
+                f.write('1')
+        except Exception as e:
+            return ("Error: " + str(e), "text/plain", "500 Error")
+        # Reboot into UDP mode
+        time.sleep(0.5)
+        machine.reset()
+        return ("OK", "text/plain", "200 OK")
+
     return ("Not Found", "text/plain", "404 Not Found")
 
 
@@ -410,5 +426,5 @@ def get_html():
 <h2 id="et">Select effect</h2><div id="pc" class="g"><div class="np">Select an effect</div></div>
 <button class="b bn" id="rb" onclick="R()" style="display:none">Run</button>
 <div class="c"><h3>CONTROLS</h3><div class="br"><span>Bright</span><input type="range" class="bs" id="br" min="0" max="100" value=\"""" + br + """" oninput="U(this.value)" onchange="B(this.value)"><span class="bv" id="bv">""" + br + """%</span></div>
-<div class="bw"><button class="b bt" onclick="X()">Stop</button><button class="b bo" onclick="O()">Off</button></div></div></div></div>
-<script>let se=null,P={};function S(n){se=n;document.querySelectorAll('.e').forEach(e=>e.classList.remove('sel'));document.querySelector('[data-e="'+n+'"]').classList.add('sel');document.getElementById('et').textContent=document.querySelector('[data-e="'+n+'"]').textContent;document.getElementById('rb').style.display='block';fetch('/led/params?effect='+n).then(r=>r.json()).then(p=>{P=p;let c=document.getElementById('pc');if(!Object.keys(p).length){c.innerHTML='<div class="np">No parameters</div>';return}let h='';for(let[k,i]of Object.entries(p).sort()){if(i.type==='color'){h+='<div class="pr"><span class="pl">'+i.name+'</span><div class="pi"><input type="color" value="'+(i.value||'#00ff00')+'" data-p="'+k+'" onchange="T(this)"></div></div>'}else{let s=i.type==='float'?'0.1':'1';h+='<div class="pr"><span class="pl">'+i.name+'</span><div class="pi"><input type="range" min="'+i.min+'" max="'+i.max+'" step="'+s+'" value="'+i.value+'" data-p="'+k+'" oninput="V(this)" onchange="T(this)"><span class="pv" id="v_'+k+'">'+i.value+'</span></div></div>'}}c.innerHTML=h})}function V(e){document.getElementById('v_'+e.dataset.p).textContent=e.value}function T(e){fetch('/led/setparam?effect='+se+'&param='+e.dataset.p+'&value='+encodeURIComponent(e.value))}function R(){if(!se)return;fetch('/led/effect?name='+se).then(()=>{document.getElementById('ce').textContent=se;document.querySelectorAll('.e').forEach(e=>e.classList.remove('active'));document.querySelector('[data-e="'+se+'"]').classList.add('active')})}function X(){fetch('/led/stop').then(()=>{document.getElementById('ce').textContent='None';document.querySelectorAll('.e').forEach(e=>e.classList.remove('active'))})}function O(){fetch('/led/off').then(()=>{document.getElementById('ce').textContent='None';document.querySelectorAll('.e').forEach(e=>e.classList.remove('active'))})}function U(v){document.getElementById('bv').textContent=v+'%'}function B(v){U(v);fetch('/led/brightness?value='+v)}let ce='""" + ce + """';if(ce)S(ce);</script></body></html>"""
+<div class="bw"><button class="b bt" onclick="X()">Stop</button><button class="b bo" onclick="O()">Off</button></div><button class="b" style="background:#9b59b6;color:#fff;width:100%;margin-top:10px" onclick="UDP()">UDP Mode (port 5000)</button></div></div></div>
+<script>let se=null,P={};function S(n){se=n;document.querySelectorAll('.e').forEach(e=>e.classList.remove('sel'));document.querySelector('[data-e="'+n+'"]').classList.add('sel');document.getElementById('et').textContent=document.querySelector('[data-e="'+n+'"]').textContent;document.getElementById('rb').style.display='block';fetch('/led/params?effect='+n).then(r=>r.json()).then(p=>{P=p;let c=document.getElementById('pc');if(!Object.keys(p).length){c.innerHTML='<div class="np">No parameters</div>';return}let h='';for(let[k,i]of Object.entries(p).sort()){if(i.type==='color'){h+='<div class="pr"><span class="pl">'+i.name+'</span><div class="pi"><input type="color" value="'+(i.value||'#00ff00')+'" data-p="'+k+'" onchange="T(this)"></div></div>'}else{let s=i.type==='float'?'0.1':'1';h+='<div class="pr"><span class="pl">'+i.name+'</span><div class="pi"><input type="range" min="'+i.min+'" max="'+i.max+'" step="'+s+'" value="'+i.value+'" data-p="'+k+'" oninput="V(this)" onchange="T(this)"><span class="pv" id="v_'+k+'">'+i.value+'</span></div></div>'}}c.innerHTML=h})}function V(e){document.getElementById('v_'+e.dataset.p).textContent=e.value}function T(e){fetch('/led/setparam?effect='+se+'&param='+e.dataset.p+'&value='+encodeURIComponent(e.value))}function R(){if(!se)return;fetch('/led/effect?name='+se).then(()=>{document.getElementById('ce').textContent=se;document.querySelectorAll('.e').forEach(e=>e.classList.remove('active'));document.querySelector('[data-e="'+se+'"]').classList.add('active')})}function X(){fetch('/led/stop').then(()=>{document.getElementById('ce').textContent='None';document.querySelectorAll('.e').forEach(e=>e.classList.remove('active'))})}function O(){fetch('/led/off').then(()=>{document.getElementById('ce').textContent='None';document.querySelectorAll('.e').forEach(e=>e.classList.remove('active'))})}function U(v){document.getElementById('bv').textContent=v+'%'}function B(v){U(v);fetch('/led/brightness?value='+v)}function UDP(){if(confirm('Switch to UDP mode?\\nDevice will reboot and listen on port 5000.\\nSend 0xFF byte to exit.')){fetch('/led/udpenable');alert('Rebooting to UDP mode...')}}let ce='""" + ce + """';if(ce)S(ce);</script></body></html>"""

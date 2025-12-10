@@ -2,12 +2,32 @@
 # Automatically discovers and loads modules from root folders
 # This file should NEVER crash - all errors are caught
 
+import os
 import gc
+
+# ============================================================================
+# CHECK FOR UDP MODE (before loading anything else!)
+# ============================================================================
+def check_udp_mode():
+    try:
+        os.stat('/udp_mode')
+        print("[Boot] UDP mode flag found, starting UDP receiver...")
+        gc.collect()
+        import udp_mode
+        udp_mode.run()  # This will reboot when done
+        return True
+    except OSError:
+        return False  # Flag doesn't exist, normal boot
+
+if check_udp_mode():
+    import machine
+    machine.reset()  # Should not reach here, but just in case
+
+# Normal imports (only loaded if NOT in UDP mode)
 import time
 import machine
 import neopixel
 import socket
-import os
 import ubinascii
 
 # ============================================================================
